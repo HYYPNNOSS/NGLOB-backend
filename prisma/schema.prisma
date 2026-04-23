@@ -1,0 +1,378 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum Role {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum DriverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BookingType {
+  FULL_HOUSE
+  FEW_ITEMS
+}
+
+enum HomeSize {
+  STUDIO
+  ONE
+  TWO
+  THREE
+  FOUR_PLUS
+}
+
+enum ExtrasType {
+  MATERIALS_ONLY
+  FULL_PACKING
+}
+
+enum BookingStatus {
+  PENDING
+  SCHEDULED
+  LOADED
+  IN_TRANSIT
+  UNLOADING
+  DELIVERED
+  UNREACHABLE
+  CANCELLED
+}
+
+enum TimeSlot {
+  SLOT_08_12
+  SLOT_10_14
+  SLOT_12_16
+  SLOT_14_18
+  SLOT_16_20
+  EXACT
+}
+
+enum PackingMaterialType {
+  MEDIUM_BOX
+  LARGE_BOX
+  BUBBLE_WRAP
+  PAPER_ROLL
+  TAPE
+}
+
+enum StorageStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum ItemCategory {
+  FURNITURE
+  APPLIANCES
+  BOXES
+  DECOR_OTHER
+}
+
+// ─── Models ──────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  password     String?
+  name         String
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  provider     String?   @default("local") // "local", "google", "apple", "facebook"
+  providerId   String?
+  bonusPoints  Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  bookings     Booking[] @relation("CustomerBookings")
+  driver       Driver?
+  storages     Storage[]
+  refreshTokens RefreshToken[]
+  bonusHistory BonusHistory[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique @db.VarChar(512)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Driver {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentLat  Float?
+  currentLng  Float?
+  isOnline    Boolean       @default(false)
+  status      DriverStatus  @default(PENDING)
+  updatedAt   DateTime      @updatedAt
+
+  bookings    Booking[]
+
+  @@map("drivers")
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  bookingRef        String        @unique // e.g. REM2409
+  userId            String
+  user              User          @relation("CustomerBookings", fields: [userId], references: [id])
+  driverId          String?
+  driver            Driver?       @relation(fields: [driverId], references: [id])
+
+  type              BookingType
+  status            BookingStatus @default(PENDING)
+
+  pickupAddress     String
+  destinationAddress String
+  pickupDate        DateTime
+  pickupTimeSlot    TimeSlot
+  estimatedDuration Int           // minutes
+
+  homeSize          HomeSize?
+  moversCount       Int           @default(2)
+  extras            ExtrasType    @default(MATERIALS_ONLY)
+  withStorage       Boolean       @default(false)
+  notesForDriver    String?
+
+  // Pricing breakdown (stored at booking time)
+  loadingTimeMins   Int
+  travelTimeMins    Int
+  baseCost          Float
+  additionalMoverCost Float       @default(0)
+  fuelCost          Float
+  fullPackingCost   Float         @default(0)
+  packingMaterialsCost Float      @default(0)
+  totalPrice        Float
+
+  // Deposit support
+  depositAmount     Float?
+  depositPaidAt     DateTime?
+  remainingAmount   Float?
+  remainingDueAt    DateTime?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  items             BookingItem[]
+  packingMaterials  PackingMaterial[]
+  payments          Payment[]
+  storage           Storage?
+  promoCodeId   String?
+  promoCode     PromoCode? @relation(fields: [promoCodeId], references: [id])
+  discountAmount Float?  @default(0)
+
+  exactPickupTime  String?   
+  exactTimeFee     Float?    @default(0)
+
+
+  @@map("bookings")
+}
+
+model BookingItem {
+  id          String      @id @default(cuid())
+  bookingId   String
+  booking     Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  name        String
+  category    ItemCategory
+  widthCm     Float
+  heightCm    Float
+  depthCm     Float
+  volumeM3    Float
+  quantity    Int         @default(1)
+  pricePerUnit Float
+
+  @@map("booking_items")
+}
+
+model PackingMaterial {
+  id          String              @id @default(cuid())
+  bookingId   String
+  booking     Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  type        PackingMaterialType
+  quantity    Int
+  pricePerUnit Float
+
+  @@map("packing_materials")
+}
+
+model Storage {
+  id              String        @id @default(cuid())
+  storageRef      String        @unique // e.g. STR679011
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  bookingId       String?       @unique
+  booking         Booking?      @relation(fields: [bookingId], references: [id])
+
+  status          StorageStatus @default(ACTIVE)
+  weeklyPrice     Float
+  autoRenew       Boolean       @default(true)
+  deliveryAddress String
+  paymentMethodId String?       // Stripe payment method ID
+
+  startDate       DateTime      @default(now())
+  cancelledAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items           StorageItem[]
+  deliveries      StorageDelivery[]
+  payments        Payment[]
+
+  sqft           Float     @default(50)
+  returnAddress  String?
+  returnDate     DateTime?
+  returnTimeSlot TimeSlot?
+
+
+  @@map("storages")
+}
+
+model StorageItem {
+  id           String   @id @default(cuid())
+  storageId    String
+  storage      Storage  @relation(fields: [storageId], references: [id], onDelete: Cascade)
+
+  name         String
+  widthCm      Float?
+  heightCm     Float?
+  depthCm      Float?
+  pricePerWeek Float
+  addedAt      DateTime @default(now())
+
+  @@map("storage_items")
+}
+
+model StorageDelivery {
+  id              String         @id @default(cuid())
+  storageId       String
+  storage         Storage        @relation(fields: [storageId], references: [id])
+
+  status          DeliveryStatus @default(SCHEDULED)
+  deliveryAddress String
+  deliveryDate    DateTime
+  deliveryTimeSlot TimeSlot
+  cost            Float          @default(0) // 0 = free first delivery
+  itemIds         String         @default("") // JSON-encoded array of item IDs, empty string = all
+
+  scheduledAt     DateTime       @default(now())
+  completedAt     DateTime?
+
+  payments        Payment[]
+
+  @@map("storage_deliveries")
+}
+
+model Payment {
+  id                  String        @id @default(cuid())
+  stripePaymentIntentId String      @unique
+  amount              Float
+  currency            String        @default("gbp")
+  status              PaymentStatus @default(PENDING)
+
+  bookingId           String?
+  booking             Booking?      @relation(fields: [bookingId], references: [id])
+  storageId           String?
+  storage             Storage?      @relation(fields: [storageId], references: [id])
+  storageDeliveryId   String?
+  storageDelivery     StorageDelivery? @relation(fields: [storageDeliveryId], references: [id])
+
+  isDeposit           Boolean       @default(false)
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+model BonusHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points    Int      // positive = earned, negative = spent
+  action    String   // description
+  createdAt DateTime @default(now())
+
+  @@map("bonus_history")
+}
+
+// Catalog (seeded, not user-created)
+model CatalogItem {
+  id           String       @id @default(cuid())
+  name         String
+  category     ItemCategory
+  widthCm      Float
+  heightCm     Float
+  depthCm      Float
+  volumeM3     Float
+  basePrice    Float        // £ per item for removal
+
+  @@map("catalog_items")
+}
+
+enum PromoCodeType {
+  PERCENT
+  FIXED
+}
+ 
+model PromoCode {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  type        PromoCodeType
+  value       Float         // 20 = 20% or £20 fixed
+  maxUses     Int?
+  usedCount   Int           @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+ 
+  uses        PromoCodeUse[]
+  bookings    Booking[]
+
+  @@map("promo_codes")
+}
+ 
+model PromoCodeUse {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id])
+  userId      String?
+  bookingId   String?
+  usedAt      DateTime  @default(now())
+ 
+  @@map("promo_code_uses")
+}
