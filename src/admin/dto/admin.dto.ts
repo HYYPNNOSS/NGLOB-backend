@@ -18,3 +18,25 @@ export class AssignDriverDto {
   @IsString()
   driverId: string;
 }
+
+export class CreateManagerDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  email: string;
+
+  @IsString()
+  @IsOptional()
+  password?: string;
+}
+
+export class ApproveManagerDto {
+  // Empty, no longer requires city
+}
+
+export class RejectManagerDto {
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}

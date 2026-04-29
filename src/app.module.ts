@@ -12,6 +12,7 @@ import { DriverModule } from './driver/driver.module';
 import { AdminModule } from './admin/admin.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { PromoModule } from './promo/promo.module';
+import { ManagerModule } from './manager/manager.module';
  
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { PromoModule } from './promo/promo.module';
     AdminModule,
     TrackingModule,
     PromoModule,
+    ManagerModule,
   ],
 })
 export class AppModule {}

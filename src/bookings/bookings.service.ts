@@ -68,6 +68,16 @@ export class BookingsService {
       ? new Date(pickupDate)
       : undefined;
 
+    const UK_CITIES = [
+      'London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow',
+      'Edinburgh', 'Bristol', 'Liverpool', 'Sheffield', 'Cardiff',
+      'Belfast', 'Nottingham', 'Leicester', 'Southampton', 'Newcastle',
+      'Brighton', 'Plymouth', 'Wolverhampton', 'Aberdeen', 'Coventry',
+    ];
+    const detectedCity = UK_CITIES.find(city => 
+      dto.pickupAddress.toLowerCase().includes(city.toLowerCase())
+    ) || null;
+
     const booking = await this.prisma.booking.create({
       data: {
         bookingRef:        `REM${nanoid(4).toUpperCase()}`,
@@ -97,6 +107,7 @@ export class BookingsService {
         depositAmount,
         remainingAmount,
         remainingDueAt,
+        city:                  detectedCity,
 
         items: {
           create: dto.items.map(item => ({

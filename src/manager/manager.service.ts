@@ -1,0 +1,205 @@
+import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { BookingStatus, DriverStatus, Role } from '@prisma/client';
+import { IsOptional, IsString, IsEnum } from 'class-validator';
+
+export class ManagerBookingsQueryDto {
+  @IsOptional() @IsEnum(BookingStatus) status?: BookingStatus;
+  @IsOptional() @IsString() date?: string;
+  @IsOptional() @IsString() driverId?: string;
+}
+
+export class ApplyAsManagerDto {
+  @IsOptional() @IsString() experience?: string;
+  @IsOptional() @IsString() phone?: string;
+}
+
+@Injectable()
+export class ManagerService {
+  constructor(private prisma: PrismaService) {}
+
+  // ── Apply as a manager ──────────────────────────────────────
+  async applyAsManager(userId: string, dto: ApplyAsManagerDto) {
+    const existing = await this.prisma.managerApplication.findUnique({ where: { userId } });
+    if (existing) {
+      if (existing.status === 'REJECTED') {
+        // Allow re-application after rejection
+        return this.prisma.managerApplication.update({
+          where: { userId },
+          data: {
+            experience: dto.experience,
+            phone: dto.phone,
+            status: 'PENDING',
+            adminNotes: null,
+          },
+          include: { user: { select: { name: true, email: true } } },
+        });
+      }
+      throw new ConflictException('You have already applied as a manager');
+    }
+
+    return this.prisma.managerApplication.create({
+      data: {
+        userId,
+        experience: dto.experience,
+        phone: dto.phone,
+        status: 'PENDING',
+      },
+      include: { user: { select: { name: true, email: true } } },
+    });
+  }
+
+  // ── Get application status ──────────────────────────────────
+  async getApplicationStatus(userId: string) {
+    const application = await this.prisma.managerApplication.findUnique({
+      where: { userId },
+      select: { id: true, status: true, adminNotes: true, createdAt: true, updatedAt: true },
+    });
+    return application; // null if hasn't applied
+  }
+
+  // ── Get all bookings (global for managers) ─────────────
+  async getAllBookings(query: ManagerBookingsQueryDto) {
+    const where: any = {};
+    if (query.status) where.status = query.status;
+    if (query.date) {
+      const d = new Date(query.date);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      where.pickupDate = { gte: d, lt: next };
+    }
+    if (query.driverId) where.driverId = query.driverId;
+
+    const [bookings, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        include: {
+          user:   { select: { name: true, phone: true, email: true } },
+          driver: { include: { user: { select: { name: true } } } },
+          items:  true,
+        },
+        orderBy: { pickupDate: 'asc' },
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+
+    return { bookings, total };
+  }
+
+  async confirmBooking(bookingId: string) {
+    return this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: BookingStatus.CONFIRMED },
+    });
+  }
+
+  async assignDriver(bookingId: string, driverId: string) {
+    return this.prisma.booking.update({
+      where: { id: bookingId },
+      data:  { driverId, status: BookingStatus.SCHEDULED },
+      include: { driver: { include: { user: true } } },
+    });
+  }
+
+  // ── Get drivers (global for managers) ──────────────────
+  async getDrivers() {
+    const bookingWhere: any = {
+      status: { in: [BookingStatus.SCHEDULED, BookingStatus.LOADED] },
+      pickupDate: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+    };
+
+    return this.prisma.driver.findMany({
+      include: {
+        user: { select: { name: true, phone: true, email: true } },
+        bookings: {
+          where: bookingWhere,
+          select: { id: true, pickupDate: true, status: true },
+        },
+        availability: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
+      },
+    });
+  }
+
+  // ── Dashboard stats (global for managers) ──────────────
+  async getDashboardStats() {
+    return Promise.all([
+      this.prisma.booking.count({ where: { status: BookingStatus.SCHEDULED } }),
+      this.prisma.booking.count({ where: { status: BookingStatus.PENDING } }),
+      this.prisma.storage.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.booking.aggregate({ _sum: { totalPrice: true } }),
+      this.prisma.driver.count({ where: { status: DriverStatus.PENDING } }),
+      this.prisma.booking.count({ where: { status: BookingStatus.CONFIRMED } }),
+    ]).then(([scheduled, pending, activeStorage, revenue, pendingDrivers, confirmed]) => ({
+      scheduledToday: scheduled,
+      pendingPayment: pending,
+      activeStorage,
+      totalRevenue:   revenue._sum.totalPrice ?? 0,
+      pendingDrivers,
+      confirmedOrders: confirmed,
+    }));
+  }
+
+  async updateDriverStatus(driverId: string, status: DriverStatus) {
+    const driver = await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { status },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    if (status === DriverStatus.REJECTED) {
+      await this.prisma.user.update({
+        where: { id: driver.user.id },
+        data: { role: 'CUSTOMER' },
+      });
+    } else if (status === DriverStatus.APPROVED) {
+      await this.prisma.user.update({
+        where: { id: driver.user.id },
+        data: { role: 'DRIVER' },
+      });
+    }
+
+  }
+
+  // ── Get driver documents (for review) ──────────────────────
+  async getDriverDocuments(driverId: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { id: driverId },
+      include: {
+        user: { select: { name: true, email: true, phone: true } },
+        documents: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!driver) throw new NotFoundException('Driver not found');
+    return driver;
+  }
+
+  // ── Get all drivers with their documents ───────────────────
+  async getDriversWithDocuments() {
+    return this.prisma.driver.findMany({
+      include: {
+        user: { select: { name: true, email: true, phone: true } },
+        documents: { orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ── Review a single document ───────────────────────────────
+  async reviewDocument(documentId: string, status: 'APPROVED' | 'REJECTED', reviewNote?: string) {
+    const doc = await this.prisma.driverDocument.findUnique({
+      where: { id: documentId },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    return this.prisma.driverDocument.update({
+      where: { id: documentId },
+      data: {
+        status,
+        reviewNote: reviewNote || null,
+        reviewedAt: new Date(),
+      },
+    });
+  }
+}
