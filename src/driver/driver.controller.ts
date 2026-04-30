@@ -10,7 +10,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
+import { tmpdir } from 'os';
+import { existsSync, mkdirSync } from 'fs';
 import {
   DriverService,
   UpdateLocationDto,
@@ -21,10 +23,22 @@ import {
   ToggleDayDto,
 } from './driver.service';
 
+const uploadDir = process.env.VERCEL || process.env.NODE_ENV === 'production' 
+  ? tmpdir() 
+  : join(__dirname, '..', '..', 'uploads', 'documents');
+
+if (!existsSync(uploadDir)) {
+  try {
+    mkdirSync(uploadDir, { recursive: true });
+  } catch (e) {
+    console.error('Failed to create upload directory:', e);
+  }
+}
+
 const documentStorage = diskStorage({
-  destination: join(__dirname, '..', '..', 'uploads', 'documents'),
+  destination: uploadDir,
   filename: (_req, file, cb) => {
-    const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
+    const uniqueName = `${randomUUID()}${extname(file.originalname)}`;
     cb(null, uniqueName);
   },
 });
