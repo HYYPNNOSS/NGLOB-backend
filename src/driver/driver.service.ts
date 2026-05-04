@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import { BookingStatus, Role, DocumentStatus } from '@prisma/client';
-import { IsNumber, IsEnum, IsString, IsOptional, IsBoolean } from 'class-validator';
- 
+import { IsNumber, IsEnum, IsString, IsOptional, IsBoolean, ValidateNested, IsArray } from 'class-validator';
+import { Type } from 'class-transformer'; 
 export class UpdateLocationDto {
   @IsNumber() lat: number;
   @IsNumber() lng: number;
@@ -34,6 +34,9 @@ export class AvailabilitySlotDto {
 }
 
 export class SetAvailabilityDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AvailabilitySlotDto)
   slots: AvailabilitySlotDto[];
 }
 
@@ -199,21 +202,21 @@ export class DriverService {
     return { updated: true };
   }
  
-  // ── Get today's assignments ───────────────────────────────
+  // ── Get driver assignments ───────────────────────────────
   async getAssignments(userId: string) {
     const driver = await this.prisma.driver.findUnique({ where: { userId } });
     if (!driver) throw new NotFoundException('Driver profile not found');
  
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
  
     return this.prisma.booking.findMany({
       where: {
-        driverId:   driver.id,
-        pickupDate: { gte: todayStart, lte: todayEnd },
-        status: { in: [BookingStatus.SCHEDULED, BookingStatus.LOADED] },
+        driverId: driver.id,
+        OR: [
+          { pickupDate: { gte: todayStart } },
+          { status: { in: [BookingStatus.SCHEDULED, BookingStatus.LOADED, BookingStatus.IN_TRANSIT, BookingStatus.UNLOADING] } }
+        ]
       },
       include: { items: true, user: { select: { name: true, phone: true } } },
       orderBy: { pickupDate: 'asc' },
