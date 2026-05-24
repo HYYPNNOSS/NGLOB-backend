@@ -1,0 +1,8 @@
+DATABASE_URL="mysql://avnadmin:AVNS_lw2RyGXw__eEdSAmqry@168.144.121.84:19302/defaultdb?ssl-mode=REQUIRED"
+JWT_SECRET="super-secret-jwt-key-change-in-production"
+JWT_REFRESH_SECRET="super-secret-refresh-key-change-in-production"
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+FRONTEND_URL="http://localhost:3000"
+PORT=3001
+\nGOOGLE_CLIENT_ID=placeholder_google_id\nGOOGLE_CLIENT_SECRET=placeholder_google_secret\nAPPLE_CLIENT_ID=placeholder_apple_id\nAPPLE_TEAM_ID=placeholder_team_id\nAPPLE_KEY_ID=placeholder_key_id\nAPPLE_PRIVATE_KEY=placeholder_private_key\nFACEBOOK_APP_ID=placeholder_fb_id\nFACEBOOK_APP_SECRET=placeholder_fb_secret
