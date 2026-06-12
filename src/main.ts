@@ -30,8 +30,8 @@ async function bootstrap() {
   // CORS
   app.enableCors({
     origin: process.env.FRONTEND_URL 
-      ? [process.env.FRONTEND_URL, 'https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000', 'https://no-nine-iota.vercel.app'] 
-      : ['https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000', 'https://no-nine-iota.vercel.app'], // Fallback if FRONTEND_URL isn't set
+      ? [process.env.FRONTEND_URL, 'https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000', 'https://ngob.vercel.app'] 
+      : ['https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000', 'https://ngob.vercel.app'], // Fallback if FRONTEND_URL isn't set
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
