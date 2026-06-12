@@ -30,7 +30,7 @@ async function bootstrap() {
   // CORS
   app.enableCors({
     origin: process.env.FRONTEND_URL 
-      ? [process.env.FRONTEND_URL, 'https://ngob.vercel.app', 'http://localhost:3000'] 
+      ? [process.env.FRONTEND_URL, 'https://ngob.vercel.app', '*' ,'http://localhost:3000'] 
       : ['https://ngob.vercel.app', 'http://localhost:3000'], // Fallback if FRONTEND_URL isn't set
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
