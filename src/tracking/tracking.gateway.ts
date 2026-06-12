@@ -9,8 +9,8 @@ import { Server, Socket } from 'socket.io';
 @WebSocketGateway({
   cors: { 
     origin: process.env.FRONTEND_URL 
-      ? [process.env.FRONTEND_URL, 'http://localhost:3000'] 
-      : 'http://localhost:3000' 
+      ? [process.env.FRONTEND_URL, 'https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000'] 
+      : ['https://ngob.vercel.app', 'https://www.nglob.com', 'https://nglob.com', 'https://app.nglob.com', 'http://localhost:3000']
   },
   namespace: '/tracking',
 })
