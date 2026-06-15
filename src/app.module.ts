@@ -13,6 +13,11 @@ import { AdminModule } from './admin/admin.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { PromoModule } from './promo/promo.module';
 import { ManagerModule } from './manager/manager.module';
+import { AuditModule } from './audit/audit.module';
+import { NotificationModule } from './notifications/notification.module';
+import { QuoteModule } from './quotes/quote.module';
+import { FleetModule } from './fleet/fleet.module';
+import { ApprovalModule } from './approval/approval.module';
  
 @Module({
   imports: [
@@ -30,6 +35,11 @@ import { ManagerModule } from './manager/manager.module';
     TrackingModule,
     PromoModule,
     ManagerModule,
+    AuditModule,
+    NotificationModule,
+    QuoteModule,
+    FleetModule,
+    ApprovalModule,
   ],
 })
 export class AppModule {}

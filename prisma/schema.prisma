@@ -131,6 +131,9 @@ model User {
   bonusHistory       BonusHistory[]
   managerApplication ManagerApplication?
 
+  notifications Notification[]
+  draftQuotes   DraftQuote[]
+
   @@map("users")
 }
 
@@ -254,6 +257,8 @@ model Booking {
 
   city String? // city extracted from pickupAddress for manager filtering
 
+  auditLogs AuditLog[]
+
   @@map("bookings")
 }
 
@@ -270,6 +275,15 @@ model BookingItem {
   volumeM3     Float
   quantity     Int          @default(1)
   pricePerUnit Float
+
+  room         String?
+  isOversized  Boolean      @default(false)
+  flagReason   String?      @db.Text
+  driverFlagged Boolean     @default(false)
+  driverFlagNote String?    @db.Text
+  customerApproved Boolean  @default(true)
+  addedByDriver Boolean     @default(false)
+  photoUrl     String?      @db.Text
 
   @@map("booking_items")
 }
@@ -446,4 +460,56 @@ model ManagerApplication {
   updatedAt  DateTime      @updatedAt
 
   @@map("manager_applications")
+}
+
+// ─── Phase 1: New Models ────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  actorId   String   // The user ID who made the change
+  action    String   // Description of change, e.g., "ITEM_ADDED", "PRICE_UPDATED"
+  before    String?  @db.LongText // JSON representation of previous state
+  after     String?  @db.LongText // JSON representation of new state
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+enum NotificationType {
+  ITEM_ADDED
+  APPROVAL_REQUIRED
+  DELAY_ALERT
+  STATUS_CHANGE
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  metadata  String?          @db.LongText // Optional JSON payload (e.g. bookingId)
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model DraftQuote {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stateData   String   @db.LongText // Full JSON representation of the booking form
+  totalPrice  Float?   // Estimated total if available
+  pickup      String?
+  destination String?
+  expiresAt   DateTime // Quotes usually expire after some time
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("draft_quotes")
 }
