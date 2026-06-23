@@ -115,4 +115,30 @@ export class ManagerController {
   ) {
     return this.managerService.reviewDocument(id, dto.status, dto.reviewNote);
   }
+
+  // ── Live Rides ─────────────────────────────────────────────
+
+  @Get('active-rides')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Get all active rides with driver locations, photos, and items' })
+  getActiveRides() {
+    return this.managerService.getActiveRides();
+  }
+
+  @Get('rides/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Get full ride detail with history' })
+  getRideDetail(@Param('id') id: string) {
+    return this.managerService.getRideDetail(id);
+  }
+
+  @Get('completed-rides')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Get recently completed rides' })
+  getCompletedRides() {
+    return this.managerService.getCompletedRides();
+  }
 }

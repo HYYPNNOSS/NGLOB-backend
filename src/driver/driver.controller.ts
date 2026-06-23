@@ -100,10 +100,14 @@ export class DriverController {
   @ApiOperation({ summary: 'Set booking status (LOADED | DELIVERED | UNREACHABLE)' })
   updateStatus(
     @Param('bookingId') bookingId: string,
-    @Body() dto: UpdateBookingStatusDto,
+    @Body() body: any,
     @CurrentUser() user: any,
   ) {
-    return this.driverService.updateBookingStatus(bookingId, dto.status, user.id);
+    const { status, truckPhoto, extraItem, ...rest } = body;
+    return this.driverService.updateBookingStatus(bookingId, status, user.id, {
+      truckPhoto,
+      extraItem,
+    });
   }
 
   // ── Availability management ────────────────────────────────

@@ -257,6 +257,11 @@ model Booking {
 
   city String? // city extracted from pickupAddress for manager filtering
 
+  loadProofPhoto String? @db.Text // Cloudinary URL of loaded truck photo
+  extraItemPhoto String? @db.Text // Cloudinary URL of extra items photo
+  extraItemPrice Float?           // Price for extra items
+  extraItemPaymentMethod String?  // 'cash' | 'card'
+
   auditLogs AuditLog[]
 
   @@map("bookings")

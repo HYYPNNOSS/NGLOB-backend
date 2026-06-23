@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
-import { BookingStatus, Role, DocumentStatus } from '@prisma/client';
+import { BookingStatus, Role, DocumentStatus, NotificationType } from '@prisma/client';
+import { NotificationService } from '../notifications/notification.service';
 import { IsNumber, IsEnum, IsString, IsOptional, IsBoolean, ValidateNested, IsArray } from 'class-validator';
 import { Type } from 'class-transformer'; 
 export class UpdateLocationDto {
@@ -64,6 +65,7 @@ export class DriverService {
   constructor(
     private prisma: PrismaService,
     private tracking: TrackingGateway,
+    private notificationService: NotificationService,
   ) {}
 
   // ── Apply as a driver ──────────────────────────────────────
@@ -228,6 +230,10 @@ export class DriverService {
     bookingId: string,
     status: BookingStatus,
     userId: string,
+    extras?: {
+      truckPhoto?: string;
+      extraItem?: { photo?: string; price?: number; paymentMethod?: string } | null;
+    },
   ) {
     const driver = await this.prisma.driver.findUnique({ where: { userId } });
     if (!driver) throw new NotFoundException('Driver profile not found');
@@ -236,10 +242,21 @@ export class DriverService {
       where: { id: bookingId, driverId: driver.id },
     });
     if (!booking) throw new NotFoundException('Booking not found');
+
+    // Build update data – persist photo evidence when LOADED
+    const updateData: any = { status };
+    if (extras?.truckPhoto) {
+      updateData.loadProofPhoto = extras.truckPhoto;
+    }
+    if (extras?.extraItem) {
+      if (extras.extraItem.photo) updateData.extraItemPhoto = extras.extraItem.photo;
+      if (extras.extraItem.price != null) updateData.extraItemPrice = extras.extraItem.price;
+      if (extras.extraItem.paymentMethod) updateData.extraItemPaymentMethod = extras.extraItem.paymentMethod;
+    }
  
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
-      data:  { status },
+      data: updateData,
     });
  
     // Notify customer via WebSocket
@@ -248,6 +265,20 @@ export class DriverService {
       lng:    driver.currentLng!,
       status: status.toString(),
     });
+
+    this.tracking.broadcastToManagers('dashboard-updated');
+    this.tracking.broadcastToDriver(driver.id, 'assignments-updated');
+
+    // Trigger post-move review automation if DELIVERED
+    if (status === 'DELIVERED') {
+      await this.notificationService.createNotification(
+        booking.userId,
+        NotificationType.SYSTEM,
+        'How was your move?',
+        'Thank you for choosing NGLOB! We would love to hear about your experience. Please leave us a review on Google.',
+        { link: 'https://g.page/r/nglob-removals/review' }
+      );
+    }
  
     return updated;
   }

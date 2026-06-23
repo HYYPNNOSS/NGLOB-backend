@@ -1,5 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TrackingGateway } from '../tracking/tracking.gateway';
 import { BookingStatus, DriverStatus, Role } from '@prisma/client';
 import { IsOptional, IsString, IsEnum } from 'class-validator';
 
@@ -16,7 +17,7 @@ export class ApplyAsManagerDto {
 
 @Injectable()
 export class ManagerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private tracking: TrackingGateway) {}
 
   // ── Apply as a manager ──────────────────────────────────────
   async applyAsManager(userId: string, dto: ApplyAsManagerDto) {
@@ -87,18 +88,23 @@ export class ManagerService {
   }
 
   async confirmBooking(bookingId: string) {
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: { status: BookingStatus.CONFIRMED },
     });
+    this.tracking.broadcastToManagers('dashboard-updated');
+    return updated;
   }
 
   async assignDriver(bookingId: string, driverId: string) {
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data:  { driverId, status: BookingStatus.SCHEDULED },
       include: { driver: { include: { user: true } } },
     });
+    this.tracking.broadcastToManagers('dashboard-updated');
+    this.tracking.broadcastToDriver(driverId, 'assignments-updated');
+    return updated;
   }
 
   // ── Get drivers (global for managers) ──────────────────
@@ -200,6 +206,74 @@ export class ManagerService {
         reviewNote: reviewNote || null,
         reviewedAt: new Date(),
       },
+    });
+  }
+
+  // ── Active rides (live view for managers) ──────────────────
+  async getActiveRides() {
+    const activeStatuses = [
+      BookingStatus.SCHEDULED,
+      BookingStatus.LOADED,
+      BookingStatus.IN_TRANSIT,
+      BookingStatus.UNLOADING,
+    ];
+
+    return this.prisma.booking.findMany({
+      where: {
+        status: { in: activeStatuses },
+        driverId: { not: null },
+      },
+      include: {
+        user: { select: { name: true, phone: true, email: true } },
+        driver: {
+          include: {
+            user: { select: { name: true, phone: true, email: true } },
+          },
+        },
+        items: true,
+      },
+      orderBy: { pickupDate: 'asc' },
+    });
+  }
+
+  // ── Ride detail (with history) ─────────────────────────────
+  async getRideDetail(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: { select: { name: true, phone: true, email: true } },
+        driver: {
+          include: {
+            user: { select: { name: true, phone: true, email: true } },
+          },
+        },
+        items: true,
+        auditLogs: { orderBy: { createdAt: 'desc' }, take: 20 },
+        payments: true,
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    return booking;
+  }
+
+  // ── Completed rides (recent history) ───────────────────────
+  async getCompletedRides(limit = 20) {
+    return this.prisma.booking.findMany({
+      where: {
+        status: { in: [BookingStatus.DELIVERED, BookingStatus.UNREACHABLE] },
+        driverId: { not: null },
+      },
+      include: {
+        user: { select: { name: true, phone: true, email: true } },
+        driver: {
+          include: {
+            user: { select: { name: true, phone: true, email: true } },
+          },
+        },
+        items: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
     });
   }
 }

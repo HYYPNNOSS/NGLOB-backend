@@ -138,6 +138,8 @@ export class BookingsService {
       },
     });
 
+    this.tracking.broadcastToManagers('dashboard-updated');
+
     return { booking, pricing };
   }
 

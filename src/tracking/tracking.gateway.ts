@@ -40,14 +40,37 @@ export class TrackingGateway implements OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     // Socket.IO auto-removes from all rooms on disconnect
   }
+
+  @SubscribeMessage('subscribe-manager')
+  handleSubscribeManager(@ConnectedSocket() client: Socket) {
+    client.join('managers');
+    return { event: 'subscribed', room: 'managers' };
+  }
+
+  @SubscribeMessage('subscribe-driver')
+  handleSubscribeDriver(
+    @MessageBody() data: { driverId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`driver:${data.driverId}`);
+    return { event: 'subscribed', driverId: data.driverId };
+  }
+
+  broadcastToManagers(event: string, payload?: any) {
+    this.server.to('managers').emit(event, payload);
+  }
+
+  broadcastToDriver(driverId: string, event: string, payload?: any) {
+    this.server.to(`driver:${driverId}`).emit(event, payload);
+  }
  
   // Called by DriverService on each GPS update
   broadcastDriverLocation(
     bookingId: string,
     payload: { lat: number; lng: number; status: string; estimatedArrival?: string },
   ) {
-    this.server
-      .to(`booking:${bookingId}`)
-      .emit('driver-location', { bookingId, ...payload, timestamp: new Date().toISOString() });
+    const data = { bookingId, ...payload, timestamp: new Date().toISOString() };
+    this.server.to(`booking:${bookingId}`).emit('driver-location', data);
+    this.server.to('managers').emit('driver-location', data);
   }
 }
