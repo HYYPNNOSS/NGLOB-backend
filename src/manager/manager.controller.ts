@@ -2,7 +2,7 @@ import {
   Controller, Get, Post, Patch, Param, Body, UseGuards, Query, Req,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsString, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsArray } from 'class-validator';
 import { DriverStatus, DocumentStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,7 +10,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ManagerService, ManagerBookingsQueryDto, ApplyAsManagerDto } from './manager.service';
 
-class AssignDriverDto { @IsString() driverId: string; }
+class AssignDriverDto { 
+  @IsString() driverId: string; 
+  @IsOptional() @IsArray() @IsString({ each: true }) crewIds?: string[];
+}
 class UpdateDriverStatusDto { @IsEnum(DriverStatus) status: DriverStatus; }
 class ReviewDocumentDto {
   @IsEnum(['APPROVED', 'REJECTED']) status: 'APPROVED' | 'REJECTED';
@@ -68,7 +71,7 @@ export class ManagerController {
   @Roles('MANAGER', 'ADMIN')
   @ApiOperation({ summary: 'Assign a driver to a confirmed booking' })
   assignDriver(@Param('id') id: string, @Body() dto: AssignDriverDto) {
-    return this.managerService.assignDriver(id, dto.driverId);
+    return this.managerService.assignDriver(id, dto.driverId, dto.crewIds);
   }
 
   @Get('drivers')

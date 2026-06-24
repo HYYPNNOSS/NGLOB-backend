@@ -162,6 +162,7 @@ model Driver {
   updatedAt          DateTime     @updatedAt
 
   bookings     Booking[]
+  crewBookings Booking[] @relation("BookingCrew")
   documents    DriverDocument[]
   availability DriverAvailability[]
 
@@ -209,6 +210,7 @@ model Booking {
   user       User    @relation("CustomerBookings", fields: [userId], references: [id])
   driverId   String?
   driver     Driver? @relation(fields: [driverId], references: [id])
+  crew       Driver[] @relation("BookingCrew")
 
   type   BookingType
   status BookingStatus @default(PENDING)
