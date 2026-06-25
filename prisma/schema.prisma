@@ -119,10 +119,13 @@ model User {
   phone       String?
   role        Role     @default(CUSTOMER)
   provider    String?  @default("local") // "local", "google", "apple", "facebook"
-  providerId  String?
-  bonusPoints Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  providerId   String?
+  walletBalance Float   @default(0)
+  referralCode String?  @unique
+  referredById String?
+  referredBy   User?    @relation("Referrals", fields: [referredById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   bookings           Booking[]           @relation("CustomerBookings")
   driver             Driver?
@@ -130,6 +133,7 @@ model User {
   refreshTokens      RefreshToken[]
   bonusHistory       BonusHistory[]
   managerApplication ManagerApplication?
+  referredUsers      User[]              @relation("Referrals")
 
   notifications Notification[]
   draftQuotes   DraftQuote[]
@@ -162,7 +166,7 @@ model Driver {
   updatedAt          DateTime     @updatedAt
 
   bookings     Booking[]
-  crewBookings Booking[] @relation("BookingCrew")
+  crewBookings BookingCrew[]
   documents    DriverDocument[]
   availability DriverAvailability[]
 
@@ -210,7 +214,7 @@ model Booking {
   user       User    @relation("CustomerBookings", fields: [userId], references: [id])
   driverId   String?
   driver     Driver? @relation(fields: [driverId], references: [id])
-  crew       Driver[] @relation("BookingCrew")
+  crew       BookingCrew[]
 
   type   BookingType
   status BookingStatus @default(PENDING)
@@ -293,6 +297,18 @@ model BookingItem {
   photoUrl     String?      @db.Text
 
   @@map("booking_items")
+}
+
+model BookingCrew {
+  id        String @id @default(cuid())
+  bookingId String
+  driverId  String
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driver  Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, driverId])
+  @@map("booking_crew")
 }
 
 model PackingMaterial {
@@ -399,8 +415,8 @@ model BonusHistory {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  points    Int // positive = earned, negative = spent
-  action    String // description
+  amount    Float    @default(0) // positive = earned, negative = spent
+  action    String   // description
   createdAt DateTime @default(now())
 
   @@map("bonus_history")

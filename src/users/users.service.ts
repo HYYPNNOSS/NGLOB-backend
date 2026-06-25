@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { IsOptional, IsString, IsEmail } from 'class-validator';
+import { nanoid } from 'nanoid';
  
 export class UpdateUserDto {
   @IsOptional() @IsString() name?: string;
@@ -19,7 +20,7 @@ export class UsersService {
       where: { id },
       select: {
         id: true, email: true, name: true,
-        phone: true, role: true, bonusPoints: true, createdAt: true,
+        phone: true, role: true, walletBalance: true, createdAt: true,
       },
     });
     if (!user) throw new NotFoundException('User not found');
@@ -39,27 +40,77 @@ export class UsersService {
       data:  dto,
       select: {
         id: true, email: true, name: true,
-        phone: true, role: true, bonusPoints: true,
+        phone: true, role: true, walletBalance: true,
       },
     });
   }
  
+  async linkReferral(userId: string, referralCode: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.referredById) throw new ConflictException('Account already linked to a referrer');
+
+    const referrer = await this.prisma.user.findUnique({ where: { referralCode } });
+    if (!referrer) throw new NotFoundException('Referral code not found');
+    if (referrer.id === userId) throw new ConflictException('Cannot refer yourself');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { referredById: referrer.id },
+    });
+
+    return { success: true, referredBy: referrer.name };
+  }
+
   async getBonuses(id: string) {
-    const [user, history] = await Promise.all([
-      this.prisma.user.findUnique({
-        where:  { id },
-        select: { bonusPoints: true },
-      }),
-      this.prisma.bonusHistory.findMany({
-        where:   { userId: id },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
- 
+    let user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { walletBalance: true, referralCode: true },
+    });
+
+    if (user && !user.referralCode) {
+      const newCode = nanoid(8);
+      await this.prisma.user.update({
+        where: { id },
+        data: { referralCode: newCode },
+      });
+      user.referralCode = newCode;
+    }
+
+    const history = await this.prisma.bonusHistory.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const successfulReferrals = await this.prisma.user.count({
+      where: {
+        referredById: id,
+        bookings: { some: {} },
+      },
+    });
+
+    let currentTier = 'Friend';
+    let rewardPerReferral = 1;
+    let nextTierRequired = 5;
+
+    if (successfulReferrals >= 10) {
+      currentTier = 'Ambassador';
+      rewardPerReferral = 3;
+      nextTierRequired = 0;
+    } else if (successfulReferrals >= 5) {
+      currentTier = 'Partner';
+      rewardPerReferral = 2;
+      nextTierRequired = 10;
+    }
+
     return {
-      balance: user?.bonusPoints ?? 0,
-      worthGbp: ((user?.bonusPoints ?? 0) * 0.01).toFixed(2),
+      balance: user?.walletBalance ?? 0,
       history,
+      referralCode: user?.referralCode,
+      successfulReferrals,
+      currentTier,
+      rewardPerReferral,
+      nextTierRequired,
     };
   }
 }

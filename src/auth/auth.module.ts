@@ -7,10 +7,12 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { AppleStrategy } from './strategies/apple.strategy';
 import { FacebookStrategy } from './strategies/facebook.strategy';
 import { AuthController } from './auth.controller';
+import { NotificationModule } from '../notifications/notification.module';
  
 @Module({
   imports: [
     PassportModule,
+    NotificationModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '30d' },

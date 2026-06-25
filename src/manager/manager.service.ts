@@ -99,13 +99,16 @@ export class ManagerService {
   async assignDriver(bookingId: string, driverId: string, crewIds?: string[]) {
     const data: any = { driverId, status: BookingStatus.SCHEDULED };
     if (crewIds && crewIds.length > 0) {
-      data.crew = { connect: crewIds.map(id => ({ id })) };
+      data.crew = { 
+        deleteMany: {},
+        create: crewIds.map(id => ({ driverId: id }))
+      };
     }
 
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data,
-      include: { driver: { include: { user: true } }, crew: { include: { user: true } } },
+      include: { driver: { include: { user: true } }, crew: { include: { driver: { include: { user: true } } } } },
     });
     this.tracking.broadcastToManagers('dashboard-updated');
     this.tracking.broadcastToDriver(driverId, 'assignments-updated');

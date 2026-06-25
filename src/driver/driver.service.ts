@@ -269,8 +269,31 @@ export class DriverService {
     this.tracking.broadcastToManagers('dashboard-updated');
     this.tracking.broadcastToDriver(driver.id, 'assignments-updated');
 
-    // Trigger post-move review automation if DELIVERED
+    // Trigger rewards + review notification on DELIVERED
     if (status === 'DELIVERED') {
+      // Fetch the full booking user to check referral chain
+      const fullBooking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { user: true },
+      });
+
+      if (fullBooking) {
+        // £0.50 booking completion bonus for the customer
+        await this.prisma.user.update({
+          where: { id: fullBooking.userId },
+          data: { walletBalance: { increment: 0.50 } },
+        });
+        await this.prisma.bonusHistory.create({
+          data: {
+            userId: fullBooking.userId,
+            amount: 0.50,
+            action: `Move completed — booking ${fullBooking.bookingRef}`,
+          },
+        });
+
+      }
+
+      // Post-move review notification
       await this.notificationService.createNotification(
         booking.userId,
         NotificationType.SYSTEM,

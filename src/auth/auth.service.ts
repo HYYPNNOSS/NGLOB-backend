@@ -3,15 +3,18 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notifications/notification.service';
 import * as bcrypt from 'bcryptjs';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
-import { Role } from '@prisma/client';
+import { Role, NotificationType } from '@prisma/client';
+import { nanoid } from 'nanoid';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private notificationService: NotificationService,
   ) {}
 
   // ── Register ──────────────────────────────────────────────
@@ -22,25 +25,42 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Email already in use');
 
+    // Handle referral code
+    let referredById = null;
+    if (dto.referralCode) {
+      const referrer = await this.prisma.user.findUnique({
+        where: { referralCode: dto.referralCode },
+      });
+      if (referrer) {
+        referredById = referrer.id;
+      }
+    }
+
     // Hash password
     const hashed = await bcrypt.hash(dto.password, 12);
 
-    // Create user + award 230 registration bonus points
+    // Create user
     const user = await this.prisma.user.create({
       data: {
         name: dto.name,
         email: dto.email,
         password: hashed,
         phone: dto.phone,
-        bonusPoints: 230,
-        bonusHistory: {
-          create: {
-            points: 230,
-            action: 'Account registration',
-          },
-        },
+        referralCode: nanoid(8),
+        referredById,
       },
     });
+
+    // Notify the referrer that someone just signed up via their link
+    if (referredById) {
+      await this.notificationService.createNotification(
+        referredById,
+        NotificationType.SYSTEM,
+        '🎉 Someone joined using your link!',
+        `${user.name} just signed up using your referral link. You'll earn a reward when they make their first booking!`,
+        { type: 'referral_signup', referredUserName: user.name }
+      );
+    }
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);
     return { ...tokens, user: this.sanitizeUser(user) };
@@ -82,13 +102,7 @@ export class AuthService {
           name: profile.name,
           provider: profile.provider,
           providerId: profile.providerId,
-          bonusPoints: 230,
-          bonusHistory: {
-            create: {
-              points: 230,
-              action: `Account registration via ${profile.provider}`,
-            },
-          },
+          referralCode: nanoid(8),
         },
       });
     }

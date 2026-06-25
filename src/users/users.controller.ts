@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Body, UseGuards,
+  Controller, Get, Patch, Post, Body, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -29,5 +29,11 @@ export class UsersController {
   @ApiOperation({ summary: 'Get bonus points balance and transaction history' })
   getBonuses(@CurrentUser() user: any) {
     return this.usersService.getBonuses(user.id);
+  }
+
+  @Post('me/referral')
+  @ApiOperation({ summary: 'Retroactively link account to a referrer by referral code' })
+  linkReferral(@Body() body: { referralCode: string }, @CurrentUser() user: any) {
+    return this.usersService.linkReferral(user.id, body.referralCode);
   }
 }

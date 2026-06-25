@@ -4,8 +4,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
+import { NotificationService } from '../notifications/notification.service';
 import { PromoService } from '../promo/promo.service';
-import { BookingStatus, ItemCategory } from '@prisma/client';
+import { BookingStatus, ItemCategory, NotificationType } from '@prisma/client';
 import { CreateBookingDto, RescheduleBookingDto } from './dto/create-booking.dto';
 import { UpdateAddressesDto, UpdateItemsDto } from './dto/update-booking.dto';
 import { nanoid } from 'nanoid';
@@ -16,6 +17,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private pricingService: PricingService,
     private tracking: TrackingGateway,
+    private notificationService: NotificationService,
   ) {}
 
   // Add to create() method after pricing calculation:
@@ -58,9 +60,61 @@ export class BookingsService {
       packingMaterials: dto.packingMaterials,
     });
 
+    const user = await this.prisma.user.findUnique({ 
+      where: { id: userId },
+      include: { bookings: { select: { id: true } } }
+    });
+    
+    const isReferred = !!user?.referredById;
+    const isFirstOrder = user?.bookings?.length === 0;
+    const referralDiscount = (isReferred && isFirstOrder) ? (pricing.totalToPay * 0.05) : 0;
+
+    // Referral logic: award referrer on first order creation
+    if (isReferred && isFirstOrder && user?.referredById) {
+      const referrerId = user.referredById;
+
+      // Count previous first-time bookings made by users referred by this referrer
+      const successfulReferrals = await this.prisma.user.count({
+        where: {
+          referredById: referrerId,
+          bookings: { some: {} },
+        },
+      });
+
+      let reward = 1;
+      if (successfulReferrals >= 9) reward = 3;
+      else if (successfulReferrals >= 4) reward = 2;
+
+      await this.prisma.user.update({
+        where: { id: referrerId },
+        data: { walletBalance: { increment: reward } },
+      });
+
+      await this.prisma.bonusHistory.create({
+        data: {
+          userId: referrerId,
+          amount: reward,
+          action: `Referral reward — ${user.name} booked their first move`,
+        },
+      });
+
+      // Notify the referrer about the reward
+      await this.notificationService.createNotification(
+        referrerId,
+        NotificationType.SYSTEM,
+        '💰 You earned a referral reward!',
+        `${user.name} just made their first booking using your link! £${reward} has been added to your wallet.`,
+        { type: 'referral_reward', amount: reward, referredUserName: user.name }
+      );
+    }
+
+    // Check for other promos (applyPromoAndExactTime logic would go here)
+    const finalDiscount = referralDiscount; // Can be expanded with promoCode discount
+    const finalTotalPrice = Math.max(pricing.totalToPay - finalDiscount, 0);
+
     const depositAmount = dto.payDeposit ? 40 : undefined;
     const remainingAmount = dto.payDeposit
-      ? Math.round((pricing.totalToPay - 40) * 100) / 100
+      ? Math.round((finalTotalPrice - 40) * 100) / 100
       : undefined;
 
     const pickupDate = new Date(dto.pickupDate);
@@ -103,7 +157,8 @@ export class BookingsService {
         fuelCost:              pricing.fuelCost,
         fullPackingCost:       pricing.fullPackingCost,
         packingMaterialsCost:  pricing.packingMaterialsCost,
-        totalPrice:            pricing.totalToPay,
+        totalPrice:            finalTotalPrice,
+        discountAmount:        finalDiscount,
         depositAmount,
         remainingAmount,
         remainingDueAt,

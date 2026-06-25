@@ -129,25 +129,8 @@ export class PaymentsService {
     const { bookingId, isDeposit, storageDeliveryId } = intent.metadata || {};
 
     if (bookingId) {
-      // Activate booking + award bonus points
+      // Activate booking
       await this.bookingsService.confirmPayment(bookingId, isDeposit === 'true');
-
-      const booking = await this.prisma.booking.findUnique({
-        where: { id: bookingId },
-      });
-      if (booking) {
-        await this.prisma.user.update({
-          where: { id: booking.userId },
-          data:  { bonusPoints: { increment: 50 } },
-        });
-        await this.prisma.bonusHistory.create({
-          data: {
-            userId: booking.userId,
-            points: 50,
-            action: `Booking ${booking.bookingRef} completed`,
-          },
-        });
-      }
     }
 
     if (storageDeliveryId) {
