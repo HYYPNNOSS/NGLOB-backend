@@ -121,6 +121,7 @@ model User {
   provider    String?  @default("local") // "local", "google", "apple", "facebook"
   providerId   String?
   walletBalance Float   @default(0)
+  outstandingDebt Float  @default(0)
   referralCode String?  @unique
   referredById String?
   referredBy   User?    @relation("Referrals", fields: [referredById], references: [id])
@@ -267,6 +268,10 @@ model Booking {
   extraItemPhoto String? @db.Text // Cloudinary URL of extra items photo
   extraItemPrice Float?           // Price for extra items
   extraItemPaymentMethod String?  // 'cash' | 'card'
+
+  extraTimeHours   Float?   // How many extra hours the job took
+  extraTimeCost    Float?   // Calculated cost of extra time
+  extraTimePayment String?  // 'cash' | 'debt' — how extra time was settled
 
   auditLogs AuditLog[]
 

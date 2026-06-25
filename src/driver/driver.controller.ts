@@ -103,10 +103,13 @@ export class DriverController {
     @Body() body: any,
     @CurrentUser() user: any,
   ) {
-    const { status, truckPhoto, extraItem, ...rest } = body;
+    const { status, truckPhoto, extraItem, extraTimeHours, extraTimeCost, extraTimePayment, ...rest } = body;
     return this.driverService.updateBookingStatus(bookingId, status, user.id, {
       truckPhoto,
       extraItem,
+      extraTimeHours,
+      extraTimeCost,
+      extraTimePayment,
     });
   }
 

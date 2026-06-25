@@ -233,6 +233,9 @@ export class DriverService {
     extras?: {
       truckPhoto?: string;
       extraItem?: { photo?: string; price?: number; paymentMethod?: string } | null;
+      extraTimeHours?: number;
+      extraTimeCost?: number;
+      extraTimePayment?: string;
     },
   ) {
     const driver = await this.prisma.driver.findUnique({ where: { userId } });
@@ -243,7 +246,6 @@ export class DriverService {
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    // Build update data – persist photo evidence when LOADED
     const updateData: any = { status };
     if (extras?.truckPhoto) {
       updateData.loadProofPhoto = extras.truckPhoto;
@@ -253,6 +255,9 @@ export class DriverService {
       if (extras.extraItem.price != null) updateData.extraItemPrice = extras.extraItem.price;
       if (extras.extraItem.paymentMethod) updateData.extraItemPaymentMethod = extras.extraItem.paymentMethod;
     }
+    if (extras?.extraTimeHours) updateData.extraTimeHours = extras.extraTimeHours;
+    if (extras?.extraTimeCost) updateData.extraTimeCost = extras.extraTimeCost;
+    if (extras?.extraTimePayment) updateData.extraTimePayment = extras.extraTimePayment;
  
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
@@ -291,6 +296,13 @@ export class DriverService {
           },
         });
 
+        // Apply debt if extra time was chosen to be a debt
+        if (extras?.extraTimePayment === 'debt' && extras?.extraTimeCost) {
+          await this.prisma.user.update({
+            where: { id: fullBooking.userId },
+            data: { outstandingDebt: { increment: extras.extraTimeCost } },
+          });
+        }
       }
 
       // Post-move review notification

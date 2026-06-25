@@ -97,6 +97,39 @@ export class ManagerService {
   }
 
   async assignDriver(bookingId: string, driverId: string, crewIds?: string[]) {
+    const targetBooking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (!targetBooking) throw new NotFoundException('Booking not found');
+
+    const activeStatuses = [BookingStatus.SCHEDULED, BookingStatus.LOADED, BookingStatus.IN_TRANSIT, BookingStatus.UNLOADING];
+    const allDriverIds = [driverId, ...(crewIds || [])];
+    
+    const targetDateStart = new Date(targetBooking.pickupDate);
+    targetDateStart.setHours(0, 0, 0, 0);
+    const targetDateEnd = new Date(targetDateStart);
+    targetDateEnd.setDate(targetDateEnd.getDate() + 1);
+
+    const activeBookings = await this.prisma.booking.findMany({
+      where: {
+        status: { in: activeStatuses },
+        pickupDate: { gte: targetDateStart, lt: targetDateEnd },
+        OR: [
+          { driverId: { in: allDriverIds } },
+          { crew: { some: { driverId: { in: allDriverIds } } } }
+        ]
+      }
+    });
+
+    if (activeBookings.length > 0) {
+      if (targetBooking.type === 'FULL_HOUSE') {
+        throw new ConflictException('One or more selected drivers already have active removals on this date. A driver can only be assigned to one full house removal per day.');
+      } else {
+        const hasFullHouse = activeBookings.some(b => b.type === 'FULL_HOUSE');
+        if (hasFullHouse) {
+          throw new ConflictException('One or more selected drivers are already assigned to a full house removal today and cannot take partial removals.');
+        }
+      }
+    }
+
     const data: any = { driverId, status: BookingStatus.SCHEDULED };
     if (crewIds && crewIds.length > 0) {
       data.crew = { 
@@ -132,7 +165,7 @@ export class ManagerService {
         user: { select: { name: true, phone: true, email: true } },
         bookings: {
           where: bookingWhere,
-          select: { id: true, pickupDate: true, status: true },
+          select: { id: true, pickupDate: true, status: true, type: true },
         },
         availability: {
           orderBy: { dayOfWeek: 'asc' },
