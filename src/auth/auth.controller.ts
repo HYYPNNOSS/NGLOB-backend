@@ -46,7 +46,7 @@ export class AuthController {
     // triggers AuthGuard
   }
 
-  @Get('google/callback')
+  @Get('callback/google')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req, @Res() res) {
     const tokens = await this.authService.validateOAuthLogin(req.user);
@@ -59,7 +59,7 @@ export class AuthController {
     // triggers AuthGuard
   }
 
-  @Get('facebook/callback')
+  @Get('callback/facebook')
   @UseGuards(AuthGuard('facebook'))
   async facebookAuthRedirect(@Req() req, @Res() res) {
     const tokens = await this.authService.validateOAuthLogin(req.user);
@@ -72,7 +72,7 @@ export class AuthController {
     // triggers AuthGuard
   }
 
-  @Post('apple/callback') // Apple often posts back to the callback URL
+  @Post('callback/apple') // Apple often posts back to the callback URL
   @UseGuards(AuthGuard('apple'))
   async appleAuthRedirect(@Req() req, @Res() res) {
     const tokens = await this.authService.validateOAuthLogin(req.user);

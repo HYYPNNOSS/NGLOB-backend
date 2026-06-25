@@ -9,7 +9,7 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
     super({
       clientID: configService.get<string>('FACEBOOK_APP_ID') || 'mock_fb_id',
       clientSecret: configService.get<string>('FACEBOOK_APP_SECRET') || 'mock_fb_secret',
-      callbackURL: `${configService.get<string>('API_URL') || 'http://localhost:3001/api'}/auth/facebook/callback`,
+      callbackURL: `${configService.get<string>('API_URL') || 'http://localhost:3001/api'}/auth/callback/facebook`,
       profileFields: ['id', 'emails', 'name'],
     });
   }
