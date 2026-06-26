@@ -66,6 +66,14 @@ export class ManagerController {
     return this.managerService.confirmBooking(id);
   }
 
+  @Patch('bookings/:id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Cancel a booking' })
+  cancelBooking(@Param('id') id: string) {
+    return this.managerService.cancelBooking(id);
+  }
+
   @Patch('bookings/:id/assign-driver')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('MANAGER', 'ADMIN')

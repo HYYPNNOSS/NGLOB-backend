@@ -68,6 +68,42 @@ export class DriverService {
     private notificationService: NotificationService,
   ) {}
 
+  // ── Helper: Auto-cancel expired bookings ────────────────────
+  private async autoCancelExpiredBookings(bookings: any[]) {
+    const now = new Date();
+    const cancelledIds: string[] = [];
+
+    for (const b of bookings) {
+      if (b.status === BookingStatus.PENDING || b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.SCHEDULED) {
+        if (b.pickupDate && b.pickupTimeSlot) {
+          const parts = b.pickupTimeSlot.replace('SLOT_', '').split('_').map(Number);
+          const endHour = parts[1] || 12;
+          const deadline = new Date(b.pickupDate);
+          deadline.setHours(endHour, 0, 0, 0);
+          
+          if (now.getTime() > deadline.getTime()) {
+            cancelledIds.push(b.id);
+            b.status = BookingStatus.CANCELLED;
+          }
+        }
+      }
+    }
+
+    if (cancelledIds.length > 0) {
+      await this.prisma.booking.updateMany({
+        where: { id: { in: cancelledIds } },
+        data: { status: BookingStatus.CANCELLED },
+      });
+      
+      this.tracking.broadcastToManagers('dashboard-updated');
+      
+      const assignedBookings = bookings.filter(b => cancelledIds.includes(b.id) && b.driverId);
+      for (const b of assignedBookings) {
+        if (b.driverId) this.tracking.broadcastToDriver(b.driverId, 'assignments-updated');
+      }
+    }
+  }
+
   // ── Apply as a driver ──────────────────────────────────────
   async applyAsDriver(userId: string, dto?: ApplyAsDriverDto) {
     // Check if already applied
@@ -212,7 +248,7 @@ export class DriverService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
  
-    return this.prisma.booking.findMany({
+    const assignments = await this.prisma.booking.findMany({
       where: {
         driverId: driver.id,
         OR: [
@@ -223,6 +259,9 @@ export class DriverService {
       include: { items: true, user: { select: { name: true, phone: true } } },
       orderBy: { pickupDate: 'asc' },
     });
+
+    await this.autoCancelExpiredBookings(assignments);
+    return assignments.filter((a: any) => a.status !== BookingStatus.CANCELLED);
   }
  
   // ── Update booking status ─────────────────────────────────

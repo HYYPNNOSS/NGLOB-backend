@@ -19,6 +19,43 @@ export class ApplyAsManagerDto {
 export class ManagerService {
   constructor(private prisma: PrismaService, private tracking: TrackingGateway) {}
 
+  // ── Helper: Auto-cancel expired bookings ────────────────────
+  private async autoCancelExpiredBookings(bookings: any[]) {
+    const now = new Date();
+    const cancelledIds: string[] = [];
+
+    for (const b of bookings) {
+      if (b.status === BookingStatus.PENDING || b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.SCHEDULED) {
+        if (b.pickupDate && b.pickupTimeSlot) {
+          const parts = b.pickupTimeSlot.replace('SLOT_', '').split('_').map(Number);
+          const endHour = parts[1] || 12;
+          const deadline = new Date(b.pickupDate);
+          deadline.setHours(endHour, 0, 0, 0);
+          
+          if (now.getTime() > deadline.getTime()) {
+            cancelledIds.push(b.id);
+            b.status = BookingStatus.CANCELLED; // Update in memory so the returned array reflects it
+          }
+        }
+      }
+    }
+
+    if (cancelledIds.length > 0) {
+      await this.prisma.booking.updateMany({
+        where: { id: { in: cancelledIds } },
+        data: { status: BookingStatus.CANCELLED },
+      });
+      // Broadcast to update any active dashboards
+      this.tracking.broadcastToManagers('dashboard-updated');
+      
+      // Also notify drivers if any of these were assigned to them
+      const assignedBookings = bookings.filter(b => cancelledIds.includes(b.id) && b.driverId);
+      for (const b of assignedBookings) {
+        if (b.driverId) this.tracking.broadcastToDriver(b.driverId, 'assignments-updated');
+      }
+    }
+  }
+
   // ── Apply as a manager ──────────────────────────────────────
   async applyAsManager(userId: string, dto: ApplyAsManagerDto) {
     const existing = await this.prisma.managerApplication.findUnique({ where: { userId } });
@@ -84,6 +121,8 @@ export class ManagerService {
       this.prisma.booking.count({ where }),
     ]);
 
+    await this.autoCancelExpiredBookings(bookings);
+
     return { bookings, total };
   }
 
@@ -93,6 +132,24 @@ export class ManagerService {
       data: { status: BookingStatus.CONFIRMED },
     });
     this.tracking.broadcastToManagers('dashboard-updated');
+    return updated;
+  }
+
+  // ── Cancel Booking (Manager UI) ──────────────────────────
+  async cancelBooking(bookingId: string) {
+    const targetBooking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (!targetBooking) throw new NotFoundException('Booking not found');
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: BookingStatus.CANCELLED },
+    });
+    
+    this.tracking.broadcastToManagers('dashboard-updated');
+    if (updated.driverId) {
+      this.tracking.broadcastToDriver(updated.driverId, 'assignments-updated');
+    }
+    
     return updated;
   }
 
@@ -280,6 +337,9 @@ export class ManagerService {
       },
       orderBy: { pickupDate: 'asc' },
     });
+
+    await this.autoCancelExpiredBookings(rides);
+    return rides.filter((r: any) => r.status !== BookingStatus.CANCELLED);
   }
 
   // ── Ride detail (with history) ─────────────────────────────
