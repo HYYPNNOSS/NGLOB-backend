@@ -90,7 +90,9 @@ export class StorageService {
         deliveryDate:    new Date(dto.deliveryDate),
         deliveryTimeSlot: dto.deliveryTimeSlot,
         cost,
-        itemIds:         dto.itemIds && dto.itemIds.length ? JSON.stringify(dto.itemIds) : "",
+        items: dto.itemIds && dto.itemIds.length ? {
+          create: dto.itemIds.map(itemId => ({ storageItemId: itemId }))
+        } : undefined,
       },
     });
 

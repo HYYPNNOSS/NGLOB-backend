@@ -321,7 +321,7 @@ export class ManagerService {
       BookingStatus.UNLOADING,
     ];
 
-    return this.prisma.booking.findMany({
+    const rides = await this.prisma.booking.findMany({
       where: {
         status: { in: activeStatuses },
         driverId: { not: null },

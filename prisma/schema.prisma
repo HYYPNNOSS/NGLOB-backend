@@ -102,6 +102,13 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentMethod {
+  CASH
+  CARD
+  DEBT
+  TRANSFER
+}
+
 enum ItemCategory {
   FURNITURE
   APPLIANCES
@@ -159,6 +166,7 @@ model Driver {
   user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   currentLat         Float?
   currentLng         Float?
+  locationUpdatedAt  DateTime?
   isOnline           Boolean      @default(false)
   status             DriverStatus @default(PENDING)
   licensingAuthority String? // e.g. "London", "Birmingham"
@@ -267,11 +275,11 @@ model Booking {
   loadProofPhoto String? @db.Text // Cloudinary URL of loaded truck photo
   extraItemPhoto String? @db.Text // Cloudinary URL of extra items photo
   extraItemPrice Float?           // Price for extra items
-  extraItemPaymentMethod String?  // 'cash' | 'card'
+  extraItemPaymentMethod PaymentMethod?
 
   extraTimeHours   Float?   // How many extra hours the job took
   extraTimeCost    Float?   // Calculated cost of extra time
-  extraTimePayment String?  // 'cash' | 'debt' — how extra time was settled
+  extraTimePayment PaymentMethod?
 
   auditLogs AuditLog[]
 
@@ -285,18 +293,21 @@ model BookingItem {
 
   name         String
   category     ItemCategory
+  catalogItemId String?
+  catalogItem  CatalogItem? @relation(fields: [catalogItemId], references: [id])
   widthCm      Float
   heightCm     Float
   depthCm      Float
   volumeM3     Float
+  weightKg     Float?
   quantity     Int          @default(1)
   pricePerUnit Float
 
   room         String?
   isOversized  Boolean      @default(false)
-  flagReason   String?      @db.Text
+  flagReason   String?      @db.Text // Set by system or manager
   driverFlagged Boolean     @default(false)
-  driverFlagNote String?    @db.Text
+  driverFlagNote String?    @db.Text // Set by driver in the app
   customerApproved Boolean  @default(true)
   addedByDriver Boolean     @default(false)
   photoUrl     String?      @db.Text
@@ -351,7 +362,7 @@ model Storage {
   deliveries StorageDelivery[]
   payments   Payment[]
 
-  sqft           Float     @default(50)
+  volumeM3       Float     @default(4.5)
   returnAddress  String?
   returnDate     DateTime?
   returnTimeSlot TimeSlot?
@@ -370,6 +381,8 @@ model StorageItem {
   depthCm      Float?
   pricePerWeek Float
   addedAt      DateTime @default(now())
+  
+  deliveries   StorageDeliveryItem[]
 
   @@map("storage_items")
 }
@@ -384,14 +397,25 @@ model StorageDelivery {
   deliveryDate     DateTime
   deliveryTimeSlot TimeSlot
   cost             Float          @default(0) // 0 = free first delivery
-  itemIds          String         @default("") // JSON-encoded array of item IDs, empty string = all
 
   scheduledAt DateTime  @default(now())
   completedAt DateTime?
 
   payments Payment[]
+  items    StorageDeliveryItem[]
 
   @@map("storage_deliveries")
+}
+
+model StorageDeliveryItem {
+  id                String          @id @default(cuid())
+  storageDeliveryId String
+  storageDelivery   StorageDelivery @relation(fields: [storageDeliveryId], references: [id], onDelete: Cascade)
+  storageItemId     String
+  storageItem       StorageItem     @relation(fields: [storageItemId], references: [id], onDelete: Cascade)
+
+  @@unique([storageDeliveryId, storageItemId])
+  @@map("storage_delivery_items")
 }
 
 model Payment {
@@ -437,6 +461,8 @@ model CatalogItem {
   depthCm   Float
   volumeM3  Float
   basePrice Float // £ per item for removal
+
+  bookingItems BookingItem[]
 
   @@map("catalog_items")
 }
@@ -524,6 +550,7 @@ model Notification {
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
 
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
@@ -539,5 +566,6 @@ model DraftQuote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@index([expiresAt])
   @@map("draft_quotes")
 }
